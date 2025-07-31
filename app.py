@@ -3,6 +3,8 @@ import os
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 import logging
+import asyncio
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(
@@ -12,6 +14,12 @@ logging.basicConfig(
 
 # Initialize Flask app
 app = Flask(__name__)
+
+def async_route(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+    return wrapped
 
 # Bot configuration
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -128,25 +136,42 @@ def home():
     })
 
 @app.route('/webhook', methods=['POST'])
-def webhook():
+@async_route
+async def webhook():
     """Handle incoming webhook from Telegram"""
     if request.method == 'POST':
-        update = Update.de_json(request.get_json(), bot_app.bot)
-        bot_app.process_update(update)
-        return jsonify({"status": "ok"})
+        try:
+            update = Update.de_json(request.get_json(), bot_app.bot)
+            await bot_app.process_update(update)
+            return jsonify({"status": "ok"})
+        except Exception as e:
+            print(f"Error processing webhook: {e}")
+            return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/set_webhook')
-def set_webhook():
+@async_route
+async def set_webhook():
     """Set webhook for Telegram bot"""
-    webhook_url = os.environ.get('WEBHOOK_URL', 'https://your-app-name.onrender.com/webhook')
-    bot_app.bot.set_webhook(url=webhook_url)
-    return jsonify({"status": "webhook set", "url": webhook_url})
+    try:
+        # Get the current app URL from environment or construct it
+        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://your-app-name.onrender.com')
+        webhook_url = f"{app_url}/webhook"
+        
+        # Set the webhook
+        await bot_app.bot.set_webhook(url=webhook_url)
+        
+        return jsonify({
+            "status": "success", 
+            "message": "Webhook set successfully",
+            "url": webhook_url
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 if __name__ == '__main__':
-    # Start the bot
-    bot_app.initialize()
-    bot_app.start()
-    
     # Run Flask app
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False) 
