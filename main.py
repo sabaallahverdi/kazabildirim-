@@ -97,3 +97,26 @@ def main():
 
 if __name__ == "__main__":
     main()
+    if __name__ == "__main__":
+    import os
+
+    PORT = int(os.environ.get("PORT", 8443))
+    HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+
+    if not HOSTNAME:
+        raise ValueError("RENDER_EXTERNAL_HOSTNAME not set!")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("^🚨 Kaza Bildir$"), begin_report))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
+    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    print("✅ Bot webhook ile çalışıyor...")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"https://{HOSTNAME}/webhook"
+    )
+
