@@ -1,37 +1,17 @@
-from flask import Flask, request, jsonify
 import os
+from dotenv import load_dotenv
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-import logging
-import asyncio
-from functools import wraps
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Load environment variables
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
-# Initialize Flask app
-app = Flask(__name__)
-
-def async_route(f):
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        return asyncio.run(f(*args, **kwargs))
-    return wrapped
-
-# Bot configuration
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 764067662))
-
-# Check if required environment variables are set
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required!")
+# This dictionary will store report data for each user
 user_reports = {}
 
-# Initialize bot application
-bot_app = Application.builder().token(BOT_TOKEN).build()
+# --- Your Bot Functions ---
 
 # ✅ Ana Menü
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -42,7 +22,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resize_keyboard=True
         )
     )
-    user_reports.pop(update.effective_user.id, None)  # reset user state
+    user_reports.pop(update.effective_user.id, None)  # Reset user state
 
 # ✅ /start komutu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,7 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ✅ Kaza Bildir butonu
 async def begin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_reports[user_id] = {}
+    user_reports[user_id] = {} # Start a new report for the user
 
     await update.message.reply_text(
         "📍 Lütfen kaza yerinin konumunu gönderin.",
@@ -66,7 +46,9 @@ async def begin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     location = update.message.location
-    user_reports[user_id] = {'location': location}
+    if user_id not in user_reports:
+        user_reports[user_id] = {} # Ensure user entry exists
+    user_reports[user_id]['location'] = location
 
     await update.message.reply_text(
         "📞 Şimdi lütfen aşağıdaki butonla telefon numaranızı paylaşın.",
@@ -82,7 +64,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     contact = update.message.contact
     if user_id not in user_reports:
-        user_reports[user_id] = {}
+        user_reports[user_id] = {} # Ensure user entry exists
     user_reports[user_id]['phone'] = contact.phone_number
 
     await update.message.reply_text(
@@ -98,80 +80,46 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id not in user_reports or 'location' not in user_reports[user_id] or 'phone' not in user_reports[user_id]:
         await update.message.reply_text("⚠️ Lütfen önce konum ve telefon numarası paylaşın.")
+        await begin_report(update, context) # Restart the process
         return
 
     loc = user_reports[user_id]['location']
     phone = user_reports[user_id]['phone']
 
-    # Admin'e bilgi
     caption = (
         f"🚨 Kaza Bildirimi\n"
         f"👤 @{user.username or 'İsimsiz'}\n"
         f"🆔 ID: {user.id}\n"
         f"📞 Tel: {phone}\n"
-        f"📌 Konum: {loc.latitude}, {loc.longitude}"
+        f"📌 Konum: https://www.google.com/maps?q={loc.latitude},{loc.longitude}"
     )
-    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=caption)
-    await context.bot.send_photo(chat_id=ADMIN_CHAT_ID, photo=photo.file_id, caption="📸 Fotoğraf")
-
-    # Kullanıcıya teşekkür + tekrar başlat
+    
+    # Send information to the admin
+    await context.bot.send_photo(chat_id=ADMIN_CHAT_ID, photo=photo.file_id, caption=caption)
+    
+    # Thank the user and reset the bot for them
     await update.message.reply_text(
         "✅ Tüm bilgiler alındı. Doğrulama sonrası sizinle iletişime geçilecektir. Teşekkür ederiz!",
     )
-    await show_main_menu(update, context)  # reset + tekrar başlatma butonu
+    await show_main_menu(update, context)
 
-# Add handlers to bot
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(MessageHandler(filters.Regex("^🚨 Kaza Bildir$"), begin_report))
-bot_app.add_handler(MessageHandler(filters.LOCATION, handle_location))
-bot_app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-bot_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+# --- Main function to run the bot ---
 
-# Flask routes
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "Bot is running!",
-        "message": "Kaza Bildirim Botu aktif"
-    })
+def main():
+    """Start the bot."""
+    # Create the Application and pass it your bot's token.
+    application = Application.builder().token(BOT_TOKEN).build()
 
-@app.route('/webhook', methods=['POST'])
-@async_route
-async def webhook():
-    """Handle incoming webhook from Telegram"""
-    if request.method == 'POST':
-        try:
-            update = Update.de_json(request.get_json(), bot_app.bot)
-            await bot_app.process_update(update)
-            return jsonify({"status": "ok"})
-        except Exception as e:
-            print(f"Error processing webhook: {e}")
-            return jsonify({"status": "error", "message": str(e)}), 500
+    # Add command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.Regex("^🚨 Kaza Bildir$"), begin_report))
+    application.add_handler(MessageHandler(filters.LOCATION, handle_location))
+    application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-@app.route('/set_webhook')
-@async_route
-async def set_webhook():
-    """Set webhook for Telegram bot"""
-    try:
-        # Get the current app URL from environment or construct it
-        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://your-app-name.onrender.com')
-        webhook_url = f"{app_url}/webhook"
-        
-        # Set the webhook
-        await bot_app.bot.set_webhook(url=webhook_url)
-        
-        return jsonify({
-            "status": "success", 
-            "message": "Webhook set successfully",
-            "url": webhook_url
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    # Run the bot until the user presses Ctrl-C
+    print("✅ Bot is running... Polling for updates.")
+    application.run_polling()
 
-if __name__ == '__main__':
-    # Run Flask app
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+if __name__ == "__main__":
+    main()
