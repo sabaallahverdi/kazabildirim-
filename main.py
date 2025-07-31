@@ -1,4 +1,3 @@
-
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 import os
@@ -85,8 +84,16 @@ def main():
     app.add_handler(MessageHandler(filters.LOCATION, handle_location))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    print("✅ Bot çalışıyor...")
-    app.run_polling()
+    print("✅ Bot webhook ile çalışıyor...")
+
+    PORT = int(os.environ.get("PORT", 8443))
+    HOSTNAME = os.environ["RENDER_EXTERNAL_HOSTNAME"]
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"https://{HOSTNAME}/webhook"
+    )
 
 if __name__ == "__main__":
     main()
