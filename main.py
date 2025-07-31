@@ -98,7 +98,7 @@ def main():
 if __name__ == "__main__":
     main()
     if __name__ == "__main__":
-    import os
+        import os
 
     PORT = int(os.environ.get("PORT", 8443))
     HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
