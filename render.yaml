@@ -1,0 +1,12 @@
+
+services:
+  - type: web
+    name: kazabildir
+    env: python
+    buildCommand: ""
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 8406877843:AAHJulHDja0F0ERtCIwuY8AN3BdEH9hqtxo
+      - key: ADMIN_CHAT_ID
+        value: "764067662"
